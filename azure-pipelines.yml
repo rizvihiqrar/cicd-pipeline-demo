@@ -1,0 +1,174 @@
+# Azure DevOps Pipelines — Product API Pipeline
+#
+# Equivalent pipeline to .github/workflows/ci-cd.yml, expressed in Azure Pipelines syntax.
+# Demonstrates the same stage-gating logic on a different platform.
+#
+# Azure Pipelines docs: https://learn.microsoft.com/en-us/azure/devops/pipelines/?view=azure-devops
+
+name: Product API — CI/CD
+
+trigger:
+  branches:
+    include: [main]
+
+pr:
+  branches:
+    include: [main]
+
+# ── 1. Lint ──────────────────────────────────────────────────────────────────
+stages:
+- stage: Lint
+  displayName: Lint
+  jobs:
+  - job: ESLint
+    displayName: Run ESLint
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: Use Node 20
+
+    - script: npm ci
+      displayName: Install dependencies
+
+    - script: npm run lint
+      displayName: ESLint
+
+# ── 2. Unit tests ────────────────────────────────────────────────────────────
+- stage: UnitTest
+  displayName: Unit Tests
+  dependsOn: Lint
+  jobs:
+  - job: Jest
+    displayName: Jest unit tests with coverage
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: Use Node 20
+
+    - script: npm ci
+      displayName: Install dependencies
+
+    - script: npm run test:unit -- --coverage --coverageReporters=text --coverageReporters=cobertura
+      displayName: Run Jest
+
+    - task: PublishCodeCoverageResults@2
+      inputs:
+        summaryFileLocation: coverage/cobertura-coverage.xml
+        failIfCoverageEmpty: false
+      displayName: Publish coverage report
+      condition: always()
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: coverage/
+        artifactName: coverage-report
+      displayName: Upload coverage artifact
+      condition: always()
+
+# ── 3. Integration tests ─────────────────────────────────────────────────────
+- stage: IntegrationTest
+  displayName: Integration Tests
+  dependsOn: UnitTest
+  jobs:
+  - job: Playwright
+    displayName: Playwright integration tests
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: Use Node 20
+
+    - script: npm ci
+      displayName: Install dependencies
+
+    - script: npx playwright install chromium --with-deps
+      displayName: Install Playwright browsers
+
+    - script: npm run test:integration
+      displayName: Run Playwright
+
+    - task: PublishPipelineArtifact@1
+      inputs:
+        targetPath: playwright-report/
+        artifactName: playwright-report
+      displayName: Upload Playwright report
+      condition: always()
+
+# ── 4. Build & package ───────────────────────────────────────────────────────
+- stage: BuildArtifact
+  displayName: Build Artifact
+  dependsOn: IntegrationTest
+  jobs:
+  - job: Package
+    displayName: Package application
+    pool:
+      vmImage: ubuntu-latest
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: Use Node 20
+
+    - script: npm ci --omit=dev
+      displayName: Install production dependencies
+
+    - script: |
+        tar \
+          --exclude='.git' \
+          --exclude='tests' \
+          --exclude='coverage' \
+          --exclude='playwright-report' \
+          -czf $(Build.ArtifactStagingDirectory)/product-api.tar.gz \
+          src server.js package.json package-lock.json node_modules
+        echo "Artifact size:"
+        du -sh $(Build.ArtifactStagingDirectory)/product-api.tar.gz
+      displayName: Create tarball
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        pathToPublish: $(Build.ArtifactStagingDirectory)/product-api.tar.gz
+        artifactName: product-api
+      displayName: Publish build artifact
+
+# ── 5. Deploy ────────────────────────────────────────────────────────────────
+- stage: Deploy
+  displayName: Deploy to Staging
+  dependsOn: BuildArtifact
+  # Only deploy from main branch, not from PRs.
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  # 'deployment' job type maps to an Azure DevOps Environment — add approval
+  # gates in Pipelines → Environments → staging to require manual sign-off.
+  - deployment: DeployToStaging
+    displayName: Deploy to staging environment
+    environment: staging
+    pool:
+      vmImage: ubuntu-latest
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: DownloadBuildArtifacts@0
+            inputs:
+              artifactName: product-api
+              downloadPath: $(Pipeline.Workspace)
+            displayName: Download artifact
+
+          - script: |
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              echo "  Deploying product-api to staging"
+              echo "  Build:   $(Build.BuildNumber)"
+              echo "  Commit:  $(Build.SourceVersion)"
+              echo "  Actor:   $(Build.RequestedFor)"
+              echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+              ls -lh $(Pipeline.Workspace)/product-api/product-api.tar.gz
+              echo "Deploy complete (simulated)"
+            displayName: Deploy (simulated)

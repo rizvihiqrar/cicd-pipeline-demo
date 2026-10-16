@@ -1,0 +1,167 @@
+name: CI / CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ── Pipeline overview ──────────────────────────────────────────────────────────
+#
+#  lint ──► unit-test ──► integration-test ──► build-artifact ──► deploy
+#
+#  Each job only runs when the previous one succeeds (needs:).
+#  The deploy job requires manual approval via the 'staging' GitHub Environment.
+# ──────────────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ── 1. Lint ─────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  # ── 2. Unit tests ───────────────────────────────────────────────────────────
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Jest unit tests with coverage
+        run: npm run test:unit -- --coverage --coverageReporters=text --coverageReporters=lcov
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 30
+
+  # ── 3. Integration tests ────────────────────────────────────────────────────
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: unit-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright integration tests
+        run: npm run test:integration
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+  # ── 4. Build & package artifact ─────────────────────────────────────────────
+  build-artifact:
+    name: Build Artifact
+    runs-on: ubuntu-latest
+    needs: integration-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install production dependencies only
+        run: npm ci --omit=dev
+
+      - name: Package application
+        run: |
+          mkdir -p artifact
+          tar --exclude='.git' \
+              --exclude='tests' \
+              --exclude='coverage' \
+              --exclude='playwright-report' \
+              --exclude='node_modules/.cache' \
+              -czf artifact/product-api.tar.gz \
+              src server.js package.json package-lock.json node_modules
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-api
+          path: artifact/product-api.tar.gz
+          retention-days: 7
+
+  # ── 5. Deploy ───────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-artifact
+    if: github.ref == 'refs/heads/main'
+
+    # Requires a GitHub Environment named 'staging' with protection rules.
+    # Add required reviewers in Settings → Environments → staging to gate deploys.
+    environment:
+      name: staging
+      url: https://example.com/api/products
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: product-api
+
+      - name: Verify artifact
+        run: |
+          echo "Artifact downloaded:"
+          ls -lh product-api.tar.gz
+          tar -tzf product-api.tar.gz | head -20
+
+      - name: Deploy (simulated)
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "  Deploying product-api to staging"
+          echo "  Artifact: product-api.tar.gz"
+          echo "  Commit:   ${{ github.sha }}"
+          echo "  Actor:    ${{ github.actor }}"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "Deploy complete — in production this step would:"
+          echo "  • SCP/rsync the tarball to the server"
+          echo "  • OR push a Docker image to a registry"
+          echo "  • OR trigger a Render/Railway/Azure deploy webhook"

@@ -1,0 +1,102 @@
+# GitLab CI/CD — Product API Pipeline
+#
+# Equivalent pipeline to .github/workflows/ci-cd.yml, expressed in GitLab CI syntax.
+# Demonstrates the same stage-gating logic on a different platform.
+#
+# GitLab docs: https://docs.gitlab.com/ee/ci/
+
+stages:
+  - lint
+  - unit-test
+  - integration-test
+  - build-artifact
+  - deploy
+
+# ── 1. Lint ─────────────────────────────────────────────────────────────────
+lint:
+  stage: lint
+  image: node:20-alpine
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths: [node_modules/]
+  script:
+    - npm ci
+    - npm run lint
+
+# ── 2. Unit tests ────────────────────────────────────────────────────────────
+unit-test:
+  stage: unit-test
+  image: node:20-alpine
+  needs: [lint]
+  cache:
+    key: $CI_COMMIT_REF_SLUG
+    paths: [node_modules/]
+  script:
+    - npm ci
+    - npm run test:unit -- --coverage --coverageReporters=text --coverageReporters=cobertura
+  coverage: '/Lines\s*:\s*(\d+\.?\d*)%/'
+  artifacts:
+    when: always
+    paths:
+      - coverage/
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    expire_in: 30 days
+
+# ── 3. Integration tests ─────────────────────────────────────────────────────
+integration-test:
+  stage: integration-test
+  image: mcr.microsoft.com/playwright:v1.49.0-noble
+  needs: [unit-test]
+  script:
+    - npm ci
+    - npm run test:integration
+  artifacts:
+    when: always
+    paths:
+      - playwright-report/
+    expire_in: 30 days
+
+# ── 4. Build & package ───────────────────────────────────────────────────────
+build-artifact:
+  stage: build-artifact
+  image: node:20-alpine
+  needs: [integration-test]
+  script:
+    - npm ci --omit=dev
+    - mkdir -p artifact
+    - >
+      tar
+      --exclude='.git'
+      --exclude='tests'
+      --exclude='coverage'
+      --exclude='playwright-report'
+      -czf artifact/product-api.tar.gz
+      src server.js package.json package-lock.json node_modules
+    - echo "Artifact size:" && du -sh artifact/product-api.tar.gz
+  artifacts:
+    paths:
+      - artifact/product-api.tar.gz
+    expire_in: 7 days
+
+# ── 5. Deploy ────────────────────────────────────────────────────────────────
+deploy:
+  stage: deploy
+  image: alpine:latest
+  needs: [build-artifact]
+  # 'when: manual' requires a human to click Deploy in the GitLab UI —
+  # equivalent to a required-reviewer environment gate in GitHub Actions.
+  when: manual
+  only:
+    - main
+  script:
+    - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    - echo "  Deploying product-api to staging"
+    - echo "  Pipeline:  $CI_PIPELINE_ID"
+    - echo "  Commit:    $CI_COMMIT_SHA"
+    - echo "  Actor:     $GITLAB_USER_LOGIN"
+    - echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    - ls -lh artifact/product-api.tar.gz
+    - echo "Deploy complete (simulated)"

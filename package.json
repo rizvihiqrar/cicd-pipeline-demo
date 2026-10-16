@@ -1,0 +1,24 @@
+{
+  "name": "cicd-pipeline-demo",
+  "version": "1.0.0",
+  "description": "Node.js REST API with a 5-stage GitHub Actions CI/CD pipeline — lint, unit tests, integration tests, artifact packaging, and environment-gated deploy",
+  "main": "server.js",
+  "scripts": {
+    "start":           "node server.js",
+    "lint":            "eslint \"src/**/*.js\" \"tests/unit/**/*.js\" server.js",
+    "test:unit":       "jest --testPathPattern=tests/unit",
+    "test:integration":"playwright test",
+    "test":            "jest --testPathPattern=tests/unit && playwright test"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@eslint/js":      "^9.18.0",
+    "@playwright/test":"^1.49.0",
+    "eslint":          "^9.18.0",
+    "globals":         "^15.14.0",
+    "jest":            "^29.7.0",
+    "supertest":       "^7.0.0"
+  }
+}
