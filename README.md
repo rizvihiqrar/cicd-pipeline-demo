@@ -1,8 +1,54 @@
+[![CI/CD Pipeline Demo: one five-stage pipeline on three CI/CD platforms](docs/assets/banner.svg)](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml)
+
 # CI/CD Pipeline Demo
 
-A Node.js REST API with the same 5-stage pipeline implemented on **three CI/CD platforms**: GitHub Actions, GitLab CI, and Azure DevOps Pipelines. The pipeline — not the API — is the point.
+[![CI / CD Pipeline](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml)
 
-## Pipeline Architecture
+A small Node.js REST API with the same five-stage pipeline written for three CI/CD platforms: GitHub Actions, GitLab CI and Azure DevOps Pipelines. The pipeline, not the API, is the point. Code has to pass lint, unit tests and integration tests before it is packaged, and a person has to approve the deploy. It is for anyone who wants to see how a release gate works, or how the same gate is written on each platform.
+
+**[Technical guide →](TECHNICAL.md)**
+
+## In plain English
+
+When a developer changes code, a robot checks it before it can go live: it reads the code for mistakes, runs the tests, packages the app, and then waits for a person to say "deploy". If any check fails, everything after it is skipped, so broken code never reaches the package or the deploy.
+
+<a href="docs/assets/actions-run.png">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/actions-run-dark.png">
+    <img src="docs/assets/actions-run.png" alt="A GitHub Actions run page: status Success, total duration 1m 38s, 3 artifacts, and a graph of five green jobs in a row: Lint, Unit Tests, Integration Tests, Build Artifact and Deploy to Staging">
+  </picture>
+</a>
+
+*A real [run on main](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369): five jobs in order, all green, 1 minute 38 seconds in total. Shown in the viewer's light or dark theme.*
+
+## Installation
+
+```bash
+git clone https://github.com/rizvihiqrar/cicd-pipeline-demo.git && cd cicd-pipeline-demo && npm install
+```
+
+## Quick start
+
+Run the same checks the pipeline runs, then start the API on `http://localhost:3001`:
+
+```bash
+npm run lint && npm run test:unit && npm run test:integration && npm start
+```
+
+## At a glance
+
+- One pipeline, five stages: lint, unit test, integration test, build artifact, deploy
+- Written three times: GitHub Actions, GitLab CI and Azure DevOps Pipelines
+- Every stage waits for the one before it, so a failure stops everything after it
+- 42 unit tests (Jest) and 14 integration tests (Playwright against a live server)
+- Unit-test coverage is published as a build artifact, with an 80% line-coverage minimum
+- The deploy waits for a person to approve it, and only runs from `main`
+- The app is packaged once, as a tarball, and that same file is deployed
+- Production dependencies only in the package, with no tests or coverage inside
+- A side-by-side [syntax comparison](TECHNICAL.md#three-platform-comparison) of how each platform does gating, artifacts and approval
+- Dependabot pull requests run through the same pipeline before they merge
+
+## The pipeline
 
 ```
 lint ──► unit-test ──► integration-test ──► build-artifact ──► deploy
@@ -11,68 +57,51 @@ lint ──► unit-test ──► integration-test ──► build-artifact ─
 | Stage | What it does |
 |---|---|
 | `lint` | ESLint code quality gate |
-| `unit-test` | Jest unit tests + coverage report published as artifact |
+| `unit-test` | Jest unit tests, with the coverage report published as an artifact |
 | `integration-test` | Playwright API tests against a live Express server |
-| `build-artifact` | Packages app into a tarball, uploads as pipeline artifact |
-| `deploy` | Downloads artifact, deploys to staging — **manual gate required** |
+| `build-artifact` | Packages the app into a tarball and uploads it as a pipeline artifact |
+| `deploy` | Downloads the artifact and deploys to staging, with a **manual gate required** |
 
-Each stage only runs when the previous one passes. Failing tests block the artifact build; a failed build blocks the deploy.
+Each stage only runs when the previous one passes. Failing tests block the artifact build, and a failed build blocks the deploy.
 
-## Three-Platform Comparison
+<a href="docs/assets/actions-artifacts.png">
+  <img src="docs/assets/actions-artifacts.png" alt="The Artifacts table of a GitHub Actions run, listing coverage-report (28.6 KB), playwright-report (193 KB) and product-api (855 KB)">
+</a>
 
-The same pipeline logic is expressed in three different CI/CD syntaxes:
+*What a run leaves behind: the coverage report, the Playwright test report and the packaged app (`product-api`).*
 
-| Platform | Config file | Job gating | Artifact handoff | Deploy gate |
-|---|---|---|---|---|
-| **GitHub Actions** | `.github/workflows/ci-cd.yml` | `needs:` | `upload-artifact` / `download-artifact` | `environment: staging` + required reviewers |
-| **GitLab CI** | `.gitlab-ci.yml` | `needs:` + `stages:` | `artifacts: paths:` | `when: manual` |
-| **Azure DevOps** | `azure-pipelines.yml` | `dependsOn:` | `PublishBuildArtifacts` / `DownloadBuildArtifacts` | `deployment:` job + `environment:` approval |
+## Three platforms, one pipeline
 
-### Key syntax differences
+| Platform | Config file | Job gating | Deploy gate |
+|---|---|---|---|
+| **GitHub Actions** | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | `needs:` | `environment: staging` + required reviewers |
+| **GitLab CI** | [`.gitlab-ci.yml`](.gitlab-ci.yml) | `needs:` + `stages:` | `when: manual` |
+| **Azure DevOps** | [`azure-pipelines.yml`](azure-pipelines.yml) | `dependsOn:` | `deployment:` job + `environment:` approval |
 
-```yaml
-# Job dependency — "don't run until X passes"
-GitHub Actions:  needs: [unit-test]
-GitLab CI:       needs: [unit-test]
-Azure DevOps:    dependsOn: UnitTest
+The [Technical guide](TECHNICAL.md#key-syntax-differences) shows the same four ideas (job order, artifacts, deploy gate, deploy only from main) side by side in each syntax.
 
-# Artifact — pass a file from one job to the next
-GitHub Actions:  uses: actions/upload-artifact@v4   /   actions/download-artifact@v4
-GitLab CI:       artifacts: paths: [artifact/]       /   (auto-downloaded via needs:)
-Azure DevOps:    PublishBuildArtifacts@1             /   DownloadBuildArtifacts@0
+## Results
 
-# Deploy gate — require a human to approve before deploy runs
-GitHub Actions:  environment: staging  (add reviewers in Settings → Environments)
-GitLab CI:       when: manual          (click Play in the GitLab pipeline UI)
-Azure DevOps:    deployment: + environment: staging  (add approvals in Pipelines → Environments)
-
-# Deploy only from main, not PRs
-GitHub Actions:  if: github.ref == 'refs/heads/main'
-GitLab CI:       only: [main]
-Azure DevOps:    condition: eq(variables['Build.SourceBranch'], 'refs/heads/main')
-```
-
-## Tech Stack
-
-| Layer | Tool |
+| Evidence | Where |
 |---|---|
-| API | Node.js · Express |
-| Unit tests | Jest · Supertest |
-| Integration tests | Playwright (API mode) |
-| Linting | ESLint 9 |
-| CI/CD | GitHub Actions · GitLab CI · Azure DevOps |
+| 42 unit tests and 14 integration tests, all passing | [Latest run on main](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369) |
+| All five jobs green in 1 minute 38 seconds | [Same run](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369) |
+| 81.8% line coverage against an 80% minimum | `npm run test:unit -- --coverage` |
+| The gate caught a failure: the first run on main failed at Unit Tests, so integration, build and deploy were skipped | [First run](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml?query=branch%3Amain) |
 
-## Running Locally
+<a href="docs/assets/actions-workflow-runs.png">
+  <img src="docs/assets/actions-workflow-runs.png" alt="The run history of the CI / CD Pipeline workflow on main: the first run failed, the five that followed all passed">
+</a>
 
-```bash
-npm install
-npm run lint              # ESLint
-npm run test:unit         # Jest unit tests
-npm run test:integration  # Playwright integration tests
-npm start                 # API on http://localhost:3001
-```
+*Run history on main. The first run failed, and the next commit added the unit tests that met the coverage threshold.*
 
-## API Endpoints
+<a href="docs/assets/playwright-report.png">
+  <img src="docs/assets/playwright-report.png" alt="The Playwright HTML report: 14 tests, 14 passed, 0 failed, 0 flaky, each tagged smoke or regression">
+</a>
+
+*The Playwright report the integration stage publishes: 14 of 14 passed, each test tagged `smoke` or `regression`.*
+
+## API
 
 | Method | Path | Description |
 |---|---|---|
@@ -83,53 +112,4 @@ npm start                 # API on http://localhost:3001
 | PUT | `/api/products/:id` | Update a product |
 | DELETE | `/api/products/:id` | Delete a product |
 
-**Product schema:**
-
-```json
-{
-  "id": 1,
-  "name": "Widget",
-  "category": "Tools",
-  "price": 9.99,
-  "stock": 50,
-  "createdAt": "2025-01-01T00:00:00.000Z"
-}
-```
-
-## Test Coverage
-
-**Unit tests** (`tests/unit/` — 39 tests):
-- `productService.test.js` — create, getAll, getById, update, remove; validation rules
-- `routes.test.js` — route handlers tested with mock-injected service (same pattern as Moq in C# unit testing); covers 200/201/204/400/404 paths
-
-**Integration tests** (`tests/integration/` — 14 tests):
-- Full CRUD flow against a live Express server
-- Validation error responses (missing name, negative price, fractional stock)
-- 404 cases for unknown IDs
-- Response header checks (Content-Type present, X-Powered-By absent)
-
-## Project Structure
-
-```
-cicd-pipeline-demo/
-├── src/
-│   ├── services/
-│   │   └── productService.js       # Business logic + in-memory store
-│   ├── routes/
-│   │   └── products.js             # Route factory — accepts service dependency
-│   └── middleware/
-│       └── errorHandler.js
-├── server.js                       # Entry point (separate from app for testability)
-├── tests/
-│   ├── unit/
-│   │   ├── productService.test.js
-│   │   └── routes.test.js
-│   └── integration/
-│       └── products.spec.js
-├── .github/workflows/ci-cd.yml     # GitHub Actions pipeline
-├── .gitlab-ci.yml                  # GitLab CI pipeline
-├── azure-pipelines.yml             # Azure DevOps pipeline
-├── jest.config.cjs
-├── playwright.config.js
-└── eslint.config.js
-```
+Tech stack: Node.js and Express, Jest and Supertest, Playwright (API mode), ESLint 9. More detail, the product schema and the project layout are in the [Technical guide](TECHNICAL.md).
