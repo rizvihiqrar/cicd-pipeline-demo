@@ -1,0 +1,12 @@
+{
+  "name": "readme-screenshots",
+  "private": true,
+  "type": "module",
+  "description": "Captures the README screenshots from the public GitHub Actions run page and the local Playwright report.",
+  "scripts": {
+    "capture": "node capture.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
