@@ -84,7 +84,7 @@ The [Technical guide](TECHNICAL.md#key-syntax-differences) shows the same four i
 
 | Evidence | Where |
 |---|---|
-| 42 unit tests and 14 integration tests, all passing | [Latest run on main](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369) |
+| 42 unit tests and 14 integration tests, all passing | [Run on main (2026-10-19)](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369) |
 | All five jobs green in 1 minute 38 seconds | [Same run](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/runs/39320454369) |
 | 81.8% line coverage against an 80% minimum | `npm run test:unit -- --coverage` |
 | The gate caught a failure: the first run on main failed at Unit Tests, so integration, build and deploy were skipped | [First run](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml?query=branch%3Amain) |
