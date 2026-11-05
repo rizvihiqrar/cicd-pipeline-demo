@@ -33,7 +33,7 @@ Each stage only runs when the previous one passes. Failing tests block the artif
 | `unit-test` | Jest unit tests, with the coverage report published as an artifact |
 | `integration-test` | Playwright API tests against a live Express server |
 | `build-artifact` | Packages the app into a tarball and uploads it as a pipeline artifact |
-| `deploy` | Downloads the artifact and deploys to staging, with a **manual gate required** |
+| `deploy` | Downloads the artifact, lists it and runs a **simulated** deploy to staging (no server) |
 
 <a href="docs/assets/actions-run.png">
   <picture>
@@ -47,7 +47,7 @@ Each stage only runs when the previous one passes. Failing tests block the artif
 #### Limits
 
 - Only the GitHub Actions workflow runs from this repository's checks. The GitLab CI and Azure DevOps files express the same pipeline in their own syntax.
-- The deploy step is simulated: it checks the artifact and prints what a real deploy would do.
+- The deploy step is simulated: it lists the artifact and prints what a real deploy would do.
 
 ### Tests that block a bad build
 
@@ -141,7 +141,7 @@ The pipeline is configured by a few files. Defaults come from the files in the r
 | Test timeout | [`playwright.config.js`](playwright.config.js) `timeout` | `15000` ms | Per-test limit |
 | Retries | [`playwright.config.js`](playwright.config.js) `retries` | `0` | A failing test fails the job |
 | Reporters | [`playwright.config.js`](playwright.config.js) `reporter` | `html` (to `playwright-report/`) and `list` | Report uploaded as an artifact |
-| Staging gate | GitHub: Settings → Environments → `staging` | Required reviewers | Pauses the deploy until a person approves |
+| Staging gate | GitHub: Settings → Environments → `staging` | Required reviewers | Optional: when set, pauses the deploy until a person approves. Not set in this repo, so runs on `main` go straight through |
 | Artifact retention | Workflow file `retention-days` | 30 (reports), 7 (package) | How long artifacts are kept |
 
 ## CI integration
@@ -176,7 +176,7 @@ jobs:
         with: { name: coverage-report, path: coverage/, retention-days: 30 }
 ```
 
-The deploy job is gated by a GitHub Environment:
+The deploy job runs in a GitHub Environment, which is where an approval gate is switched on:
 
 ```yaml
   deploy:
@@ -272,7 +272,7 @@ Line coverage is 81.8% against the 80% minimum. `src/app.js` shows 0% in the uni
 
 ### Why is the deploy only simulated?
 
-The pipeline is the demonstration. The deploy job downloads the real artifact, checks it and prints what a real deploy would do (copy the tarball to a server, push a container image, or call a deploy hook). It needs no credentials or hosting.
+The pipeline is the demonstration. The deploy job downloads the real artifact, lists it and prints what a real deploy would do (copy the tarball to a server, push a container image, or call a deploy hook). It needs no credentials or hosting.
 
 ### Why does the routes test inject a mock service?
 
@@ -293,7 +293,7 @@ Teams move between CI systems. The comparison tables show that the ideas are the
 | `npm run test:integration` fails with a port error | Something else is using port 3001 | Stop that process, or set `PORT` and the Playwright `baseURL` to match |
 | Unit-test job fails with a coverage message | Line coverage fell below 80% | Add tests, or run `npm run test:unit -- --coverage` to see uncovered lines |
 | Integration job fails on a fresh machine with a missing browser | Playwright browsers are not installed | Run `npx playwright install chromium` |
-| Deploy job never starts | It waits for approval, or the run is not on `main` | Approve it under the run's **Review deployments**, or check the branch |
+| Deploy job never starts | It waits for approval (only when reviewers are set), or the run is not on `main` | Approve it under the run's **Review deployments**, or check the branch |
 | Deploy job is skipped on a pull request | `if: github.ref == 'refs/heads/main'` | Expected: only `main` deploys |
 | Lint passes locally but fails in CI | Different Node or dependency versions | Use Node 20 and `npm ci`, as CI does |
 
