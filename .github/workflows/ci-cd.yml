@@ -11,7 +11,8 @@ on:
 #  lint ──► unit-test ──► integration-test ──► build-artifact ──► deploy
 #
 #  Each job only runs when the previous one succeeds (needs:).
-#  The deploy job requires manual approval via the 'staging' GitHub Environment.
+#  The deploy job (simulated) runs in the 'staging' GitHub Environment; adding
+#  required reviewers there makes it wait for a person's approval.
 # ──────────────────────────────────────────────────────────────────────────────
 
 jobs:

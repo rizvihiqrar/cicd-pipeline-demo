@@ -4,13 +4,13 @@
 
 [![CI / CD Pipeline](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/rizvihiqrar/cicd-pipeline-demo/actions/workflows/ci-cd.yml)
 
-A small Node.js REST API with the same five-stage pipeline written for three CI/CD platforms: GitHub Actions, GitLab CI and Azure DevOps Pipelines. The pipeline, not the API, is the point. Code has to pass lint, unit tests and integration tests before it is packaged, and a person has to approve the deploy. It is for anyone who wants to see how a release gate works, or how the same gate is written on each platform.
+A small Node.js REST API with the same five-stage pipeline written for three CI/CD platforms: GitHub Actions, GitLab CI and Azure DevOps Pipelines. The pipeline, not the API, is the point. Code has to pass lint, unit tests and integration tests before it is packaged, and only `main` reaches the deploy step. The deploy is simulated: it lists the packaged app and prints a message instead of sending it anywhere, so it needs no server or credentials. It is for anyone who wants to see how a release gate works, or how the same gate is written on each platform.
 
 **[Technical guide →](TECHNICAL.md)**
 
 ## In plain English
 
-When a developer changes code, a robot checks it before it can go live: it reads the code for mistakes, runs the tests, packages the app, and then waits for a person to say "deploy". If any check fails, everything after it is skipped, so broken code never reaches the package or the deploy.
+When a developer changes code, a robot checks it before it can go live: it reads the code for mistakes, runs the tests, packages the app, and then runs a practice deploy that prints a message instead of sending anything to a server. If any check fails, everything after it is skipped, so broken code never reaches the package or the deploy.
 
 <a href="docs/assets/actions-run.png">
   <picture>
@@ -42,8 +42,8 @@ npm run lint && npm run test:unit && npm run test:integration && npm start
 - Every stage waits for the one before it, so a failure stops everything after it
 - 42 unit tests (Jest) and 14 integration tests (Playwright against a live server)
 - Unit-test coverage is published as a build artifact, with an 80% line-coverage minimum
-- The deploy waits for a person to approve it, and only runs from `main`
-- The app is packaged once, as a tarball, and that same file is deployed
+- The deploy is simulated and only runs from `main`. Each platform's file has a place for a person's approval: the GitLab file uses `when: manual`, and on GitHub and Azure DevOps the approval is switched on in the environment's settings (not switched on here)
+- The app is packaged once, as a tarball, and the deploy step downloads and lists that same file
 - Production dependencies only in the package, with no tests or coverage inside
 - A side-by-side [syntax comparison](TECHNICAL.md#three-platform-comparison) of how each platform does gating, artifacts and approval
 - Dependabot pull requests run through the same pipeline before they merge
@@ -60,7 +60,7 @@ lint ──► unit-test ──► integration-test ──► build-artifact ─
 | `unit-test` | Jest unit tests, with the coverage report published as an artifact |
 | `integration-test` | Playwright API tests against a live Express server |
 | `build-artifact` | Packages the app into a tarball and uploads it as a pipeline artifact |
-| `deploy` | Downloads the artifact and deploys to staging, with a **manual gate required** |
+| `deploy` | Downloads the artifact, lists it and runs a **simulated** deploy to staging (no server) |
 
 Each stage only runs when the previous one passes. Failing tests block the artifact build, and a failed build blocks the deploy.
 
@@ -74,7 +74,7 @@ Each stage only runs when the previous one passes. Failing tests block the artif
 
 | Platform | Config file | Job gating | Deploy gate |
 |---|---|---|---|
-| **GitHub Actions** | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | `needs:` | `environment: staging` + required reviewers |
+| **GitHub Actions** | [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) | `needs:` | `environment: staging` + required reviewers (not set here, so the deploy runs straight through) |
 | **GitLab CI** | [`.gitlab-ci.yml`](.gitlab-ci.yml) | `needs:` + `stages:` | `when: manual` |
 | **Azure DevOps** | [`azure-pipelines.yml`](azure-pipelines.yml) | `dependsOn:` | `deployment:` job + `environment:` approval |
 
